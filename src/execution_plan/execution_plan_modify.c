@@ -52,7 +52,7 @@ void _OpBase_RemoveNode(OpBase *parent, OpBase *child) {
     child->parent = NULL;
 }
 
-uint* _ExecutionPlan_LocateReferences(OpBase *root, OpBase **op, uint *references) {
+uint* _ExecutionPlanSegment_LocateReferences(OpBase *root, OpBase **op, uint *references) {
     /* List of entities which had their ID resolved
      * at this point of execution, should include all
      * previously modified entities (up the execution plan). */
@@ -67,7 +67,7 @@ uint* _ExecutionPlan_LocateReferences(OpBase *root, OpBase **op, uint *reference
     // TODO consider sorting 'seen' here
      /* Traverse execution plan, upwards. */
     for(int i = 0; i < root->childCount; i++) {
-        uint *saw = _ExecutionPlan_LocateReferences(root->children[i], op, references);
+        uint *saw = _ExecutionPlanSegment_LocateReferences(root->children[i], op, references);
 
         /* Quick return if op was located. */
         if(*op) {
@@ -112,11 +112,11 @@ void _OpBase_RemoveChild(OpBase *parent, OpBase *child) {
     _OpBase_RemoveNode(parent, child);
 }
 
-void ExecutionPlan_AddOp(OpBase *parent, OpBase *newOp) {
+void ExecutionPlanSegment_AddOp(OpBase *parent, OpBase *newOp) {
     _OpBase_AddChild(parent, newOp);
 }
 
-void ExecutionPlan_PushBelow(OpBase *a, OpBase *b) {
+void ExecutionPlanSegment_PushBelow(OpBase *a, OpBase *b) {
     /* B is a new operation. */
     assert(!(b->parent || b->children));
     assert(a->parent);
@@ -134,14 +134,14 @@ void ExecutionPlan_PushBelow(OpBase *a, OpBase *b) {
     _OpBase_AddChild(b, a);
 }
 
-void ExecutionPlan_ReplaceOp(ExecutionPlan *plan, OpBase *a, OpBase *b) {
+void ExecutionPlanSegment_ReplaceOp(ExecutionPlanSegment *plan, OpBase *a, OpBase *b) {
     // Insert the new operation between the original and its parent.
-    ExecutionPlan_PushBelow(a, b);
+    ExecutionPlanSegment_PushBelow(a, b);
     // Delete the original operation.
-    ExecutionPlan_RemoveOp(plan, a);
+    ExecutionPlanSegment_RemoveOp(plan, a);
 }
 
-void ExecutionPlan_RemoveOp(ExecutionPlan *plan, OpBase *op) {
+void ExecutionPlanSegment_RemoveOp(ExecutionPlanSegment *plan, OpBase *op) {
     if(op->parent == NULL) {
         // Removing execution plan root.
         assert(op->childCount == 1);
@@ -164,7 +164,7 @@ void ExecutionPlan_RemoveOp(ExecutionPlan *plan, OpBase *op) {
     op->childCount = 0;
 }
 
-OpBase* ExecutionPlan_LocateOp(OpBase *root, OPType type) {
+OpBase* ExecutionPlanSegment_LocateOp(OpBase *root, OPType type) {
     if(!root) return NULL;
 
     if(root->type == type) {
@@ -172,25 +172,25 @@ OpBase* ExecutionPlan_LocateOp(OpBase *root, OPType type) {
     }
 
     for(int i = 0; i < root->childCount; i++) {
-        OpBase *op = ExecutionPlan_LocateOp(root->children[i], type);
+        OpBase *op = ExecutionPlanSegment_LocateOp(root->children[i], type);
         if(op) return op;
     }
 
     return NULL;
 }
 
-void ExecutionPlan_Taps(OpBase *root, OpBase ***taps) {
+void ExecutionPlanSegment_Taps(OpBase *root, OpBase ***taps) {
     if(root == NULL) return;
     if(root->type & OP_SCAN) *taps = array_append(*taps, root);
 
     for(int i = 0; i < root->childCount; i++) {
-        ExecutionPlan_Taps(root->children[i], taps);
+        ExecutionPlanSegment_Taps(root->children[i], taps);
     }
 }
 
-OpBase* ExecutionPlan_LocateReferences(OpBase *root, uint *references) {
+OpBase* ExecutionPlanSegment_LocateReferences(OpBase *root, uint *references) {
     OpBase *op = NULL;
-    uint *temp = _ExecutionPlan_LocateReferences(root, &op, references);
+    uint *temp = _ExecutionPlanSegment_LocateReferences(root, &op, references);
     array_free(temp);
     return op;
 }
