@@ -17,232 +17,6 @@
 #include "../arithmetic/algebraic_expression.h"
 #include "../parser/ast_build_op_contexts.h"
 
-/* Checks if parent has given child, if so returns 1
- * otherwise returns 0 */
-int _OpBase_ContainsChild(const OpBase *parent, const OpBase *child) {
-    for(int i = 0; i < parent->childCount; i++) {
-        if(parent->children[i] == child) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-void _OpBase_AddChild(OpBase *parent, OpBase *child) {
-    // Add child to parent
-    if(parent->children == NULL) {
-        parent->children = malloc(sizeof(OpBase *));
-    } else {
-        parent->children = realloc(parent->children, sizeof(OpBase *) * (parent->childCount+1));
-    }
-    parent->children[parent->childCount++] = child;
-
-    // Add parent to child
-    child->parent = parent;
-}
-
-/* Removes node b from a and update child parent lists
- * Assuming B is a child of A. */
-void _OpBase_RemoveNode(OpBase *parent, OpBase *child) {
-    // Remove child from parent.
-    int i = 0;
-    for(; i < parent->childCount; i++) {
-        if(parent->children[i] == child) break;
-    }
-    
-    assert(i != parent->childCount);    
-
-    // Uppdate child count.
-    parent->childCount--;
-    if(parent->childCount == 0) {
-        free(parent->children);
-        parent->children = NULL;
-    } else {
-        // Shift left children.
-        for(int j = i; j < parent->childCount; j++) {
-            parent->children[j] = parent->children[j+1];
-        }
-        parent->children = realloc(parent->children, sizeof(OpBase *) * parent->childCount);
-    }
-
-    // Remove parent from child.
-    child->parent = NULL;
-}
-
-void _OpBase_RemoveChild(OpBase *parent, OpBase *child) {
-    _OpBase_RemoveNode(parent, child);
-}
-
-uint* _ExecutionPlan_Locate_References(OpBase *root, OpBase **op, uint *references) {
-    /* List of entities which had their ID resolved
-     * at this point of execution, should include all
-     * previously modified entities (up the execution plan). */
-    uint *seen = array_new(uint*, 0);
-
-    uint modifies_count = array_len(root->modifies);
-    /* Append current op modified entities. */
-    for(uint i = 0; i < modifies_count; i++) {
-        seen = array_append(seen, root->modifies[i]);
-    }
-
-    // TODO consider sorting 'seen' here
-     /* Traverse execution plan, upwards. */
-    for(int i = 0; i < root->childCount; i++) {
-        uint *saw = _ExecutionPlan_Locate_References(root->children[i], op, references);
-
-        /* Quick return if op was located. */
-        if(*op) {
-            array_free(saw);
-            return seen;
-        }
-
-        uint saw_count = array_len(saw);
-        /* Append current op modified entities. */
-        for(uint i = 0; i < saw_count; i++) {
-            seen = array_append(seen, saw[i]);
-        }
-        array_free(saw);
-    }
-
-    /* See if all references have been resolved. */
-    uint ref_count = array_len(references);
-    uint match = ref_count;
-    uint seen_count = array_len(seen);
-
-    for(uint i = 0; i < ref_count; i++) {
-        int seen_id = references[i];
-
-        int j = 0;
-        for(; j < seen_count; j++) {
-            if (seen_id == seen[j]) {
-                /* Match! */
-                break;
-            }
-        }
-        
-        /* no match, quick break, */
-        if (j == seen_count) break;
-        else match--;
-    }
-
-    if(!match) *op = root;
-    return seen;
-}
-
-// TODO
-// void _Count_Graph_Entities(const Vector *entities, size_t *node_count, size_t *edge_count) {
-    // for(int i = 0; i < Vector_Size(entities); i++) {
-        // AST_GraphEntity *entity;
-        // Vector_Get(entities, i, &entity);
-
-        // if(entity->t == N_ENTITY) {
-            // (*node_count)++;
-        // } else if(entity->t == N_LINK) {
-            // (*edge_count)++;
-        // }
-    // }
-// }
-
-// TODO is this necessary?
-// void _Determine_Graph_Size(const AST *ast, size_t *node_count, size_t *edge_count) {
-    // *edge_count = 0;
-    // *node_count = 0;
-    // Vector *entities;
-    
-    // if(ast->matchNode) {
-        // entities = ast->matchNode->_mergedPatterns;
-        // _Count_Graph_Entities(entities, node_count, edge_count);
-    // }
-
-    // if(ast->createNode) {
-        // entities = ast->createNode->graphEntities;
-        // _Count_Graph_Entities(entities, node_count, edge_count);
-    // }
-// }
-
-void ExecutionPlan_AddOp(OpBase *parent, OpBase *newOp) {
-    _OpBase_AddChild(parent, newOp);
-}
-
-void ExecutionPlan_PushBelow(OpBase *a, OpBase *b) {
-    /* B is a new operation. */
-    assert(!(b->parent || b->children));
-    assert(a->parent);
-
-    /* Replace A's former parent. */
-    OpBase *a_former_parent = a->parent;
-
-    /* Disconnect A from its former parent. */
-    _OpBase_RemoveChild(a_former_parent, a);
-
-    /* Add A's former parent as parent of B. */
-    _OpBase_AddChild(a_former_parent, b);
-
-    /* Add A as a child of B. */
-    _OpBase_AddChild(b, a);
-}
-
-void ExecutionPlan_ReplaceOp(ExecutionPlan *plan, OpBase *a, OpBase *b) {
-    // Insert the new operation between the original and its parent.
-    ExecutionPlan_PushBelow(a, b);
-    // Delete the original operation.
-    ExecutionPlan_RemoveOp(plan, a);
-}
-
-void ExecutionPlan_RemoveOp(ExecutionPlan *plan, OpBase *op) {
-    if(op->parent == NULL) {
-        // Removing execution plan root.
-        assert(op->childCount == 1);
-        plan->root = op->children[0];
-    } else {
-        // Remove op from its parent.
-        OpBase* parent = op->parent;
-        _OpBase_RemoveChild(op->parent, op);
-
-        // Add each of op's children as a child of op's parent.
-        for(int i = 0; i < op->childCount; i++) {
-            _OpBase_AddChild(parent, op->children[i]);
-        }
-    }
-
-    // Clear op.
-    op->parent = NULL;
-    free(op->children);
-    op->children = NULL;
-    op->childCount = 0;
-}
-
-OpBase* ExecutionPlan_LocateOp(OpBase *root, OPType type) {
-    if(!root) return NULL;
-
-    if(root->type == type) {
-        return root;
-    }
-
-    for(int i = 0; i < root->childCount; i++) {
-        OpBase *op = ExecutionPlan_LocateOp(root->children[i], type);
-        if(op) return op;
-    }
-
-    return NULL;
-}
-
-void ExecutionPlan_Taps(OpBase *root, OpBase ***taps) {
-    if(root == NULL) return;
-    if(root->type & OP_SCAN) *taps = array_append(*taps, root);
-
-    for(int i = 0; i < root->childCount; i++) {
-        ExecutionPlan_Taps(root->children[i], taps);
-    }
-}
-
-OpBase* ExecutionPlan_Locate_References(OpBase *root, uint *references) {
-    OpBase *op = NULL;    
-    uint *temp = _ExecutionPlan_Locate_References(root, &op, references);
-    array_free(temp);
-    return op;
-}
-
 /* Given an AST path, construct a series of scans and traversals to model it. */
 void _ExecutionPlan_BuildTraversalOps(QueryGraph *qg, FT_FilterNode *ft, const cypher_astnode_t *path, Vector *traversals) {
     GraphContext *gc = GraphContext_GetFromTLS();
@@ -257,7 +31,7 @@ void _ExecutionPlan_BuildTraversalOps(QueryGraph *qg, FT_FilterNode *ft, const c
         // Register entity for Record if necessary
         AST_RecordAccommodateExpression(ast, ar_exp);
 
-        uint rec_idx = ar_exp->record_idx; 
+        uint rec_idx = ar_exp->record_idx;
         Node *n = QueryGraph_GetEntityByASTRef(qg, ast_node);
         if(cypher_ast_node_pattern_nlabels(ast_node) > 0) {
             op = NewNodeByLabelScanOp(gc, n, rec_idx);
@@ -401,9 +175,9 @@ void _ExecutionPlan_AddTraversalOps(Vector *ops, OpBase *cartesian_root, Vector 
         OpBase *parentOp;
         Vector_Pop(traversals, &parentOp);
         // Connect cartesian product to the root of traversal.
-        _OpBase_AddChild(cartesian_root, parentOp);
+        ExecutionPlan_AddOp(cartesian_root, parentOp);
         while(Vector_Pop(traversals, &childOp)) {
-            _OpBase_AddChild(parentOp, childOp);
+            ExecutionPlan_AddOp(parentOp, childOp);
             parentOp = childOp;
         }
     } else {
@@ -420,7 +194,7 @@ void _ExecutionPlan_AddTraversalOps(Vector *ops, OpBase *cartesian_root, Vector 
 // (this had been the setup to handle multiple ASTs). Depending on how the WITH clause
 // implementation works, consider folding back into caller.
 ExecutionPlan* _NewExecutionPlan(RedisModuleCtx *ctx, ResultSet *result_set) {
-    ExecutionPlan *execution_plan = (ExecutionPlan*)calloc(1, sizeof(ExecutionPlan));    
+    ExecutionPlan *execution_plan = (ExecutionPlan*)calloc(1, sizeof(ExecutionPlan));
     execution_plan->result_set = result_set;
     Vector *ops = NewVector(OpBase*, 1);
 
@@ -462,7 +236,7 @@ ExecutionPlan* _NewExecutionPlan(RedisModuleCtx *ctx, ResultSet *result_set) {
             cartesianProduct = NewCartesianProductOp(AST_RecordLength(ast));
             Vector_Push(ops, cartesianProduct);
         }
-        
+
         Vector *path_traversal = NewVector(OpBase*, 1);
         for (uint j = 0; j < npaths; j ++) {
             // Convert each path into the appropriate traversal operation(s).
@@ -565,7 +339,7 @@ ExecutionPlan* _NewExecutionPlan(RedisModuleCtx *ctx, ResultSet *result_set) {
         Vector_Push(ops, op);
     }
 
-    
+
     if (ret_clause) {
         if (cypher_ast_return_is_distinct(ret_clause)) {
             op = NewDistinctOp();
@@ -608,7 +382,7 @@ ExecutionPlan* _NewExecutionPlan(RedisModuleCtx *ctx, ResultSet *result_set) {
     execution_plan->root = parent_op;
 
     while(Vector_Pop(ops, &child_op)) {
-        _OpBase_AddChild(parent_op, child_op);
+        ExecutionPlan_AddOp(parent_op, child_op);
         parent_op = child_op;
     }
 
@@ -617,7 +391,7 @@ ExecutionPlan* _NewExecutionPlan(RedisModuleCtx *ctx, ResultSet *result_set) {
 }
 
 // Locates all "taps" (entry points) of root.
-static void _ExecutionPlan_StreamTaps(OpBase *root, OpBase ***taps) {    
+static void _ExecutionPlan_StreamTaps(OpBase *root, OpBase ***taps) {
     if(root->childCount) {
         for(int i = 0; i < root->childCount; i++) {
             OpBase *child = root->children[i];
@@ -634,7 +408,7 @@ static ExecutionPlan *_ExecutionPlan_Connect(ExecutionPlan *a, ExecutionPlan *b)
     assert(a &&
            b &&
            (a->root->type == OPType_PROJECT || a->root->type == OPType_AGGREGATE));
-    
+
     OpBase *tap;
     OpBase **taps = array_new(OpBase*, 1);
     _ExecutionPlan_StreamTaps(b->root, &taps);
@@ -644,9 +418,9 @@ static ExecutionPlan *_ExecutionPlan_Connect(ExecutionPlan *a, ExecutionPlan *b)
         /* Single tap, entry point isn't a SCAN operation, e.g.
          * MATCH (b) WITH b.v AS V RETURN V
          * MATCH (b) WITH b.v+1 AS V CREATE (n {v:V}) */
-        _OpBase_AddChild(taps[0], a->root);
+        ExecutionPlan_AddOp(taps[0], a->root);
     } else {
-        /* Multiple taps or a single SCAN tap, e.g. 
+        /* Multiple taps or a single SCAN tap, e.g.
          * MATCH (b) WITH b.v AS V MATCH (c) return V,c
          * MATCH (b) WITH b.v AS V MATCH (c),(d) return c, V, d */
         for(int i = 0; i < tap_count; i++) {
@@ -655,7 +429,7 @@ static ExecutionPlan *_ExecutionPlan_Connect(ExecutionPlan *a, ExecutionPlan *b)
                 // Connect via cartesian product
                 OpBase *cartesianProduct = NewCartesianProductOp(AST_RecordLength(ast));
                 ExecutionPlan_PushBelow(tap, cartesianProduct);
-                _OpBase_AddChild(cartesianProduct, a->root);
+                ExecutionPlan_AddOp(cartesianProduct, a->root);
                 break;
             }
         }
@@ -703,7 +477,7 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool expl
 
                 /* Scan execution plan, locate the earliest position where all
                  * references been resolved. */
-                OpBase *op = ExecutionPlan_Locate_References(curr_plan->root, references);
+                OpBase *op = ExecutionPlan_LocateReferences(curr_plan->root, references);
                 assert(op);
 
                 /* Create filter node.
@@ -723,7 +497,7 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool expl
 void _ExecutionPlanPrint(const OpBase *op, char **strPlan, int ident) {
     char strOp[512] = {0};
     sprintf(strOp, "%*s%s\n", ident, "", op->name);
-    
+
     if(*strPlan == NULL) {
         *strPlan = calloc(strlen(strOp) + 1, sizeof(char));
     } else {
@@ -757,7 +531,7 @@ void ExecutionPlanInit(ExecutionPlan *plan) {
 ResultSet* ExecutionPlan_Execute(ExecutionPlan *plan) {
     Record r;
     OpBase *op = plan->root;
-    
+
     ExecutionPlanInit(plan);
     while((r = op->consume(op)) != NULL) Record_Free(r);
     return plan->result_set;

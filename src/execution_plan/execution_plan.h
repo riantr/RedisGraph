@@ -35,8 +35,8 @@ ExecutionPlan* NewExecutionPlan (
     bool explain            // Construct execution plan, do not execute
 );
 
-/* Prints execution plan. */
-char* ExecutionPlanPrint(const ExecutionPlan *plan);
+/* execution_plan_modify.c
+ * Helper functions to move and analyze operations in an ExecutionPlan. */
 
 /* Removes operation from execution plan. */
 void ExecutionPlan_RemoveOp(ExecutionPlan *plan, OpBase *op);
@@ -54,7 +54,17 @@ void ExecutionPlan_ReplaceOp(ExecutionPlan *plan, OpBase *a, OpBase *b);
  * Returns NULL if operation wasn't found. */
 OpBase* ExecutionPlan_LocateOp(OpBase *root, OPType type);
 
-/* Returns an array of taps; operations which generate data 
+/* Find the earliest operation on the ExecutionPlan at which all
+ * references are resolved. */
+OpBase* ExecutionPlan_LocateReferences(OpBase *root, uint *references);
+
+/* execution_plan.c */
+
+/* Prints execution plan. */
+char* ExecutionPlanPrint(const ExecutionPlan *plan);
+
+
+/* Returns an array of taps; operations which generate data
  * e.g. SCAN operations */
 void ExecutionPlan_Taps(OpBase *root, OpBase ***taps);
 
