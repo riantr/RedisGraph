@@ -191,15 +191,22 @@ void _ExecutionPlanSegment_AddTraversalOps(Vector *ops, OpBase *cartesian_root, 
     }
 }
 
-ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext *gc, AST *ast, ResultSet *result_set) {
+ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext *gc, AST *ast, ResultSet *result_set, OpBase *handoff) {
     ExecutionPlanSegment *segment = malloc(sizeof(ExecutionPlanSegment));
     Vector *ops = NewVector(OpBase*, 1);
 
-    if (ast->start_offset != 0) {
-        // This is not the initial segment, so we can expect to receive a populated Record.
+    if (handoff) {
+        // This is not the initial segment; we've been given a project/aggregate tap
+        // from the previous one.
+        // Disconnect handoff operation
+        handoff->children = NULL;
+        handoff->childCount = 0;
+        OpBase *tmp = malloc(sizeof(OpHandoff));
+        memcpy(tmp, handoff, sizeof(OpHandoff));
+        Vector_Push(ops, tmp);
         // Add a WITH tap and populate QueryGraph as necessary?
-
     }
+
     // Build query graph
     QueryGraph *qg = BuildQueryGraph(gc, ast);
     segment->query_graph = qg;
@@ -351,8 +358,8 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
 
         if (order_clause) {
             int direction;
-            AR_ExpNode **expressions = AST_PrepareSortOp(order_clause, &direction);
-            op = NewSortOp(expressions, direction, limit);
+            AR_ExpNode **sort_exps = AST_PrepareSortOp(order_clause, &direction);
+            op = NewSortOp(sort_exps, direction, limit);
             Vector_Push(ops, op);
         }
 
@@ -365,6 +372,10 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
             OpBase *op_limit = NewLimitOp(limit);
             Vector_Push(ops, op_limit);
         }
+
+        const char **with_projections = AST_PrepareWithOp(with_clause);
+        op = NewHandoffOp(with_projections);
+        Vector_Push(ops, op);
 
     } else if (ret_clause) {
 
@@ -471,14 +482,17 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool expl
 
     plan->segments = malloc(segment_count * sizeof(ExecutionPlanSegment));
     uint i;
+
+    OpBase *handoff = NULL;
     for (i = 0; i < segment_count - 1; i ++) {
         ast->end_offset = segment_indices[i] + 1; // Switching from index to bound, so add 1
-        plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set);
+        plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set, handoff);
+        handoff = plan->segments[i]->root;
         ast->start_offset = ast->end_offset;
     }
 
     ast->end_offset = AST_NumClauses(ast);
-    plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set);
+    plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set, handoff);
 
     return plan;
 }
