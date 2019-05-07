@@ -198,12 +198,7 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
     if (handoff) {
         // This is not the initial segment; we've been given a project/aggregate tap
         // from the previous one.
-        // Disconnect handoff operation
-        handoff->children = NULL;
-        handoff->childCount = 0;
-        OpBase *tmp = malloc(sizeof(OpHandoff));
-        memcpy(tmp, handoff, sizeof(OpHandoff));
-        Vector_Push(ops, tmp);
+        Vector_Push(ops, handoff);
         // Add a WITH tap and populate QueryGraph as necessary?
     }
 
@@ -572,7 +567,8 @@ void ExecutionPlanFree(ExecutionPlan *plan) {
     if(plan == NULL) return;
     for (uint i = 0; i < plan->segment_count; i ++) {
         ExecutionPlanSegment *segment = plan->segments[i];
-        if(segment->root) _ExecutionPlanSegmentFreeOperations(segment->root);
+        // TODO memory leak (reused handoff)
+        // if(segment->root) _ExecutionPlanSegmentFreeOperations(segment->root);
         QueryGraph_Free(segment->query_graph);
         free(segment);
     }
