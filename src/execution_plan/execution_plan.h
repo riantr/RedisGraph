@@ -33,13 +33,6 @@ typedef struct {
     uint segment_count;
 } ExecutionPlan;
 
-/* Creates a new execution plan from AST */
-ExecutionPlan* NewExecutionPlan (
-    RedisModuleCtx *ctx,    // Module-level context
-    GraphContext *gc,       // Graph access and schemas
-    bool explain            // Construct execution plan, do not execute
-);
-
 /* execution_plan_modify.c
  * Helper functions to move and analyze operations in an ExecutionPlan. */
 
@@ -68,6 +61,13 @@ void ExecutionPlanSegment_Taps(OpBase *root, OpBase ***taps);
 OpBase* ExecutionPlanSegment_LocateReferences(OpBase *root, uint *references);
 
 /* execution_plan.c */
+
+/* Creates a new execution plan from AST */
+ExecutionPlan* NewExecutionPlan (
+    RedisModuleCtx *ctx,    // Module-level context
+    GraphContext *gc,       // Graph access and schemas
+    bool explain            // Construct execution plan, do not execute
+);
 
 /* Prints execution plan. */
 char* ExecutionPlan_Print(const ExecutionPlan *plan);
