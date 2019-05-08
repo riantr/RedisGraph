@@ -195,12 +195,12 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
     ExecutionPlanSegment *segment = malloc(sizeof(ExecutionPlanSegment));
     Vector *ops = NewVector(OpBase*, 1);
 
-    if (handoff) {
-        // This is not the initial segment; we've been given a project/aggregate tap
-        // from the previous one.
-        Vector_Push(ops, handoff);
-        // Add a WITH tap and populate QueryGraph as necessary?
-    }
+    // if (handoff) {
+        // // This is not the initial segment; we've been given a project/aggregate tap
+        // // from the previous one.
+        // Vector_Push(ops, handoff);
+        // // Add a WITH tap and populate QueryGraph as necessary?
+    // }
 
     // Build query graph
     QueryGraph *qg = BuildQueryGraph(gc, ast);
@@ -368,9 +368,8 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
             Vector_Push(ops, op_limit);
         }
 
-        const char **with_projections = AST_PrepareWithOp(with_clause);
-        op = NewHandoffOp(with_projections);
-        Vector_Push(ops, op);
+        // op = NewHandoffOp(with_projections);
+        // Vector_Push(ops, op);
 
     } else if (ret_clause) {
 
@@ -547,7 +546,7 @@ ResultSet* ExecutionPlan_Execute(ExecutionPlan *plan) {
     }
 
     bool depleted = false;
-    Record r;
+    Record r = NULL;
 
     while (!depleted) {
         for (uint i = 0; i < plan->segment_count; i ++) {

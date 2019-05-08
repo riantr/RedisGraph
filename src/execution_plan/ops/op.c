@@ -26,7 +26,6 @@ void OpBase_Reset(OpBase *op) {
 }
 
 void OpBase_Free(OpBase *op) {
-    if (op->type == OPType_HANDOFF) return; // TODO tmp
     // Free internal operation
     op->free(op);
     if(op->children) free(op->children);
