@@ -485,8 +485,8 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool expl
 
     ast->end_offset = AST_NumClauses(ast);
     AST_BuildAliasMap(ast);
-    AST_BuildReturnExpressions(ast);
-    if (plan->result_set) ResultSet_CreateHeader(plan->result_set, ast->return_expressions);
+    char **column_names = AST_BuildReturnExpressions(ast);
+    if (plan->result_set) ResultSet_CreateHeader(plan->result_set, column_names);
     plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set, handoff);
 
     return plan;

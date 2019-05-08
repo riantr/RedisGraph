@@ -29,7 +29,7 @@ typedef struct {
 
 ResultSet* NewResultSet(RedisModuleCtx *ctx);
 
-void ResultSet_CreateHeader(ResultSet *set, AR_ExpNode **columns);
+void ResultSet_CreateHeader(ResultSet *set, char **columns);
 
 int ResultSet_AddRecord(ResultSet* set, Record r);
 
