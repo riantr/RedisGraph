@@ -567,8 +567,7 @@ void ExecutionPlanFree(ExecutionPlan *plan) {
     if(plan == NULL) return;
     for (uint i = 0; i < plan->segment_count; i ++) {
         ExecutionPlanSegment *segment = plan->segments[i];
-        // TODO memory leak (reused handoff)
-        // if(segment->root) _ExecutionPlanSegmentFreeOperations(segment->root);
+        if(segment->root) _ExecutionPlanSegmentFreeOperations(segment->root);
         QueryGraph_Free(segment->query_graph);
         free(segment);
     }
