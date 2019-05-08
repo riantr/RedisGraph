@@ -312,28 +312,25 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
 
     assert(!(with_clause && ret_clause));
 
-    AR_ExpNode **exps = NULL;
     uint *modifies = NULL;
 
     if (with_clause || ret_clause) {
         uint exp_count = array_len(ast->return_expressions);
-        exps = array_new(AR_ExpNode*, exp_count);
         modifies = array_new(uint, exp_count);
         for (uint i = 0; i < exp_count; i ++) {
-            // TODO maybe store these exps in AST
-            AR_ExpNode *exp = AST_GetEntityFromAlias(ast, (char*)ast->return_expressions[i]);
-            exps = array_append(exps, exp);
-            if (exp->record_idx) modifies = array_append(modifies, exp->record_idx);
+            AR_ExpNode *exp = ast->return_expressions[i];
+            modifies = array_append(modifies, exp->record_idx);
         }
     }
 
     OpBase *op;
 
     if(with_clause) {
+        // uint *with_projections = AST_WithClauseModifies(ast, with_clause);
         if (AST_ClauseContainsAggregation(with_clause)) {
-            op = NewAggregateOp(exps, modifies);
+            op = NewAggregateOp(ast->return_expressions, modifies);
         } else {
-            op = NewProjectOp(exps, modifies);
+            op = NewProjectOp(ast->return_expressions, modifies);
         }
         Vector_Push(ops, op);
         
@@ -374,9 +371,9 @@ ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext
     } else if (ret_clause) {
 
         if (AST_ClauseContainsAggregation(ret_clause)) {
-            op = NewAggregateOp(exps, modifies);
+            op = NewAggregateOp(ast->return_expressions, modifies);
         } else {
-            op = NewProjectOp(exps, modifies);
+            op = NewProjectOp(ast->return_expressions, modifies);
         }
         Vector_Push(ops, op);
 

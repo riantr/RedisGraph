@@ -53,11 +53,14 @@ static void _ResultSet_ReplyWithScalar(RedisModuleCtx *ctx, const SIValue v) {
       }
 }
 
-static void _ResultSet_ReplayHeader(const ResultSet *set, const char **column_names) {
-    uint ncols = array_len(column_names);
+static void _ResultSet_ReplayHeader(const ResultSet *set, AR_ExpNode **columns) {
+    uint ncols = array_len(columns);
     RedisModule_ReplyWithArray(set->ctx, ncols);
     for(uint i = 0; i < ncols; i++) {
-        RedisModule_ReplyWithStringBuffer(set->ctx, column_names[i], strlen(column_names[i]));
+        char *column_name;
+        AR_EXP_ToString(columns[i], &column_name);
+        RedisModule_ReplyWithStringBuffer(set->ctx, column_name, strlen(column_name));
+        rm_free(column_name);
     }
 }
 
@@ -123,19 +126,17 @@ static void _ResultSet_ReplayStats(RedisModuleCtx* ctx, ResultSet* set) {
     }
 }
 
-void ResultSet_CreateHeader(ResultSet *resultset, const char **column_names) {
+void ResultSet_CreateHeader(ResultSet *resultset, AR_ExpNode **columns) {
     assert(resultset->recordCount == 0);
 
-    resultset->column_names = column_names;
-    resultset->column_count = array_len(column_names);
+    resultset->column_count = array_len(columns);
     /* Replay with table header. */
-    _ResultSet_ReplayHeader(resultset, column_names);
+    _ResultSet_ReplayHeader(resultset, columns);
 }
 
 ResultSet* NewResultSet(RedisModuleCtx *ctx) {
     ResultSet* set = (ResultSet*)malloc(sizeof(ResultSet));
     set->ctx = ctx;
-    set->column_names = NULL;
     set->column_count = 0;
     set->recordCount = 0;    
     set->bufferLen = 2048;

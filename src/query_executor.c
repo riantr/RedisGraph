@@ -21,12 +21,11 @@ void ExpandCollapsedNodes(AST *ast) {
     GraphContext *gc = GraphContext_GetFromTLS();
 
     unsigned int return_expression_count = array_len(ast->return_expressions);
-    const char **expandReturnElements = array_new(const char*, return_expression_count);
+    AR_ExpNode **expandReturnElements = array_new(AR_ExpNode*, return_expression_count);
 
     /* Scan return clause, search for collapsed nodes. */
     for (unsigned int i = 0; i < return_expression_count; i++) {
-        const char *column_name = ast->return_expressions[i];
-        AR_ExpNode *exp = AST_GetEntityFromAlias(ast, (char*)column_name);
+        AR_ExpNode *exp = ast->return_expressions[i];
 
         /* Detect collapsed entity,
          * A collapsed entity is represented by an arithmetic expression
@@ -68,12 +67,13 @@ void ExpandCollapsedNodes(AST *ast) {
                 const cypher_astnode_t *alias_node = cypher_ast_unwind_get_alias(ast_entity);
                 const char *alias = cypher_ast_identifier_get_name(alias_node);
                 AR_ExpNode *exp = AR_EXP_NewConstOperandNode(SI_ConstStringVal((char*)alias));
-                expandReturnElements = array_append(expandReturnElements, column_name);
+                expandReturnElements = array_append(expandReturnElements, exp);
                 continue;
             } else if (type == CYPHER_AST_IDENTIFIER) {
                 // Observed in query "UNWIND [1,2,3] AS a RETURN a AS e"
                 const char *alias = cypher_ast_identifier_get_name(ast_entity);
-                expandReturnElements = array_append(expandReturnElements, column_name);
+                AR_ExpNode *exp = AR_EXP_NewConstOperandNode(SI_ConstStringVal((char*)alias));
+                expandReturnElements = array_append(expandReturnElements, exp);
                 continue;
             } else {
                 assert(false);
@@ -99,7 +99,7 @@ void ExpandCollapsedNodes(AST *ast) {
                  * Create a fake return element. */
                 expanded_exp = AR_EXP_NewConstOperandNode(SI_ConstStringVal(""));
                 // Incase an alias is given use it, otherwise use the variable name.
-                expandReturnElements = array_append(expandReturnElements, column_name);
+                expandReturnElements = array_append(expandReturnElements, expanded_exp);
             } else {
                 TrieMapIterator *it = TrieMap_Iterate(schema->attributes, "", 0);
                 while(TrieMapIterator_Next(it, &prop, &prop_len, &ptr)) {
@@ -118,14 +118,14 @@ void ExpandCollapsedNodes(AST *ast) {
                     // TODO memory leak (and ugly), but only required until we don't expand collapsed entities
                     char *expanded_name;
                     AR_EXP_ToString(expanded_exp, &expanded_name);
-                    AST_MapAlias(ast, expanded_name, expanded_exp);
+                    AST_MapAlias(ast, expanded_name, expanded_exp); // TODO necessary?
                     // expandReturnElements = array_append(expandReturnElements, column_name);
-                    expandReturnElements = array_append(expandReturnElements, expanded_name);
+                    expandReturnElements = array_append(expandReturnElements, expanded_exp);
                 }
                 TrieMapIterator_Free(it);
             }
         } else {
-            expandReturnElements = array_append(expandReturnElements, column_name);
+            expandReturnElements = array_append(expandReturnElements, exp);
         }
     }
 
@@ -253,7 +253,7 @@ void _ReturnExpandAll(AST *ast) {
         AR_ExpNode *entity = ast->defined_entities[i];
         char *alias = entity->operand.variadic.entity_alias;
         if (alias) {
-            ast->return_expressions = array_append(ast->return_expressions, alias);
+            ast->return_expressions = array_append(ast->return_expressions, entity);
         }
     }
 }
@@ -299,6 +299,7 @@ void _BuildReturnExpressions(AST *ast) {
         char *alias = NULL;
         const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
         if (alias_node) {
+            // TODO ?
             // The projection either has an alias (AS) or is a function call.
             alias = (char*)cypher_ast_identifier_get_name(alias_node);
             // TODO can the alias have appeared in an earlier clause?
@@ -315,10 +316,11 @@ void _BuildReturnExpressions(AST *ast) {
             // Add entity to the set of entities to be populated
             ast->defined_entities = array_append(ast->defined_entities, alias_exp);
             AST_MapAlias(ast, alias, alias_exp);
+            ast->return_expressions = array_append(ast->return_expressions, alias_exp);
+        } else {
+            ast->return_expressions = array_append(ast->return_expressions, exp);
         }
 
-        const char *column_name = alias ? alias : exp->operand.variadic.entity_alias;
-        ast->return_expressions = array_append(ast->return_expressions, column_name);
     }
 
     // Handle ORDER entities
@@ -404,10 +406,10 @@ void AST_BuildWithExpressions(AST *ast) {
             // Add entity to the set of entities to be populated
             ast->defined_entities = array_append(ast->defined_entities, alias_exp);
             AST_MapAlias(ast, alias, alias_exp);
+            ast->return_expressions = array_append(ast->return_expressions, alias_exp);
+        } else {
+            ast->return_expressions = array_append(ast->return_expressions, exp);
         }
-
-        const char *column_name = alias ? alias : exp->operand.variadic.entity_alias;
-        ast->return_expressions = array_append(ast->return_expressions, column_name);
     }
 
     // Handle ORDER entities
