@@ -381,8 +381,20 @@ void AST_BuildAliasMap(AST *ast) {
     ast->entity_map = NewTrieMap();
     ast->defined_entities = array_new(cypher_astnode_t*, 1);
 
+    // Check every clause in the given range
+    for (uint i = ast->start_offset; i < ast->end_offset; i ++) {
+        const cypher_astnode_t *clause = cypher_astnode_get_child(ast->root, i);
+        cypher_astnode_type_t type = cypher_astnode_type(clause);
+        // MATCH, MERGE, and CREATE operations may define node and edge patterns
+        // as well as aliases, all of which should be mapped
+        if (type == CYPHER_AST_MATCH || type == CYPHER_AST_MERGE) {
+            // TODO improve this logic
+            _mapPatternIdentifiers(ast, ast->root, false);
+        } else if (type == CYPHER_AST_CREATE) {
+            _mapPatternIdentifiers(ast, ast->root, true);
+        }
+    }
     // Get graph entity identifiers from MATCH, MERGE, and CREATE clauses.
-    _mapPatternIdentifiers(ast, ast->root, false);
 
     // Get aliases defined by UNWIND and RETURN...AS clauses
     // _mapReturnAliases(ast);

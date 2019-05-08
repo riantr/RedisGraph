@@ -466,27 +466,31 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool expl
     plan->result_set = NULL;
     if(!explain) {
         plan->result_set = NewResultSet(ctx);
-        ResultSet_CreateHeader(plan->result_set, ast->return_expressions);
     }
 
-    uint segment_count = AST_GetClauseCount(ast, CYPHER_AST_WITH) + 1;
-    plan->segment_count = segment_count;
+    uint with_clause_count = AST_GetClauseCount(ast, CYPHER_AST_WITH);
+    plan->segment_count = with_clause_count + 1;
+
+    plan->segments = malloc(with_clause_count * sizeof(ExecutionPlanSegment));
 
     uint *segment_indices = NULL;
-    if (segment_count > 1) segment_indices = AST_GetClauseIndices(ast, CYPHER_AST_WITH);
-
-    plan->segments = malloc(segment_count * sizeof(ExecutionPlanSegment));
-    uint i;
+    if (with_clause_count > 0) segment_indices = AST_GetClauseIndices(ast, CYPHER_AST_WITH);
 
     OpBase *handoff = NULL;
-    for (i = 0; i < segment_count - 1; i ++) {
+    uint i;
+    for (i = 0; i < with_clause_count; i ++) {
         ast->end_offset = segment_indices[i] + 1; // Switching from index to bound, so add 1
+        AST_BuildAliasMap(ast);
+        AST_BuildWithExpressions(ast);
         plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set, handoff);
         handoff = plan->segments[i]->root;
         ast->start_offset = ast->end_offset;
     }
 
     ast->end_offset = AST_NumClauses(ast);
+    AST_BuildAliasMap(ast);
+    AST_BuildReturnExpressions(ast);
+    if (plan->result_set) ResultSet_CreateHeader(plan->result_set, ast->return_expressions);
     plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set, handoff);
 
     return plan;
