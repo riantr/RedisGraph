@@ -33,7 +33,7 @@ void ExpandCollapsedNodes(AST *ast) {
          * of AR_EXP_OPERAND type,
          * The operand type should be AST_AR_EXP_VARIADIC,
          * lastly property should be missing. */
-        if(exp->type == AR_EXP_OPERAND &&
+        if (exp->type == AR_EXP_OPERAND &&
             exp->operand.type == AR_EXP_VARIADIC &&
             exp->operand.variadic.entity_prop == NULL) {
 
@@ -268,7 +268,7 @@ void _BuildReturnExpressions(AST *ast) {
     if (cypher_ast_return_has_include_existing(ret_clause)) return _ReturnExpandAll(ast);
 
     unsigned int count = cypher_ast_return_nprojections(ret_clause);
-    ast->return_expressions = array_new(AR_ExpNode*, count);
+    ast->return_expressions = array_new(AR_ExpNode*, count); // TODO memory leak, overwrites WITH
     for (unsigned int i = 0; i < count; i++) {
         const cypher_astnode_t *projection = cypher_ast_return_get_projection(ret_clause, i);
         const cypher_astnode_t *expr = cypher_ast_projection_get_expression(projection);
@@ -347,7 +347,6 @@ void AST_BuildReturnExpressions(AST *ast) {
 
 }
 
-// TODO dup of _buildReturnExpressions
 void AST_BuildWithExpressions(AST *ast) {
     // Handle with entities
     const cypher_astnode_t *with_clause = AST_GetClause(ast, CYPHER_AST_WITH);

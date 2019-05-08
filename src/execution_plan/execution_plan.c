@@ -471,7 +471,7 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool expl
     uint with_clause_count = AST_GetClauseCount(ast, CYPHER_AST_WITH);
     plan->segment_count = with_clause_count + 1;
 
-    plan->segments = malloc(with_clause_count * sizeof(ExecutionPlanSegment));
+    plan->segments = malloc(plan->segment_count * sizeof(ExecutionPlanSegment));
 
     uint *segment_indices = NULL;
     if (with_clause_count > 0) segment_indices = AST_GetClauseIndices(ast, CYPHER_AST_WITH);
