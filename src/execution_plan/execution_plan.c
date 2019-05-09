@@ -191,7 +191,7 @@ void _ExecutionPlanSegment_AddTraversalOps(Vector *ops, OpBase *cartesian_root, 
     }
 }
 
-ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext *gc, AST *ast, ResultSet *result_set, OpBase *handoff) {
+ExecutionPlanSegment* _NewExecutionPlanSegment(RedisModuleCtx *ctx, GraphContext *gc, AST *ast, ResultSet *result_set, const char **record_blueprint) {
     ExecutionPlanSegment *segment = malloc(sizeof(ExecutionPlanSegment));
     Vector *ops = NewVector(OpBase*, 1);
 
@@ -472,14 +472,14 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool expl
     uint *segment_indices = NULL;
     if (with_clause_count > 0) segment_indices = AST_GetClauseIndices(ast, CYPHER_AST_WITH);
 
-    OpBase *handoff = NULL;
+    const char **with_clause_outputs = NULL;
     uint i;
     for (i = 0; i < with_clause_count; i ++) {
         ast->end_offset = segment_indices[i] + 1; // Switching from index to bound, so add 1
         AST_BuildAliasMap(ast);
         AST_BuildWithExpressions(ast);
-        plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set, handoff);
-        handoff = plan->segments[i]->root;
+        plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set, with_clause_outputs);
+        with_clause_outputs = AST_BuildWithIdentifiers(ast);
         ast->start_offset = ast->end_offset;
     }
 
@@ -487,7 +487,7 @@ ExecutionPlan* NewExecutionPlan(RedisModuleCtx *ctx, GraphContext *gc, bool expl
     AST_BuildAliasMap(ast);
     char **column_names = AST_BuildReturnExpressions(ast);
     if (plan->result_set) ResultSet_CreateHeader(plan->result_set, column_names);
-    plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set, handoff);
+    plan->segments[i] = _NewExecutionPlanSegment(ctx, gc, ast, plan->result_set, with_clause_outputs);
 
     return plan;
 }

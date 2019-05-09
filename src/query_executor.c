@@ -387,17 +387,46 @@ char** AST_BuildReturnExpressions(AST *ast) {
     return column_names;
 }
 
-char** AST_BuildWithExpressions(AST *ast) {
-    // Handle with entities
+const char** AST_BuildWithIdentifiers(AST *ast) {
     const cypher_astnode_t *with_clause = AST_GetClause(ast, CYPHER_AST_WITH);
     if (!with_clause) return NULL;
 
+    unsigned int count = cypher_ast_with_nprojections(with_clause);
+    const char **identifiers = array_new(char*, count);
+    for (unsigned int i = 0; i < count; i++) {
+        const char *identifier = NULL;
+        const cypher_astnode_t *projection = cypher_ast_with_get_projection(with_clause, i);
+
+        // Use projection alias if provided
+        const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
+        if (alias_node) {
+            // The projection either has an alias (AS) or is a function call.
+            // WITH a AS e
+            identifier = cypher_ast_identifier_get_name(alias_node);
+        } else {
+            const cypher_astnode_t *expr = cypher_ast_projection_get_expression(projection);
+            assert(cypher_astnode_type(expr) == CYPHER_AST_IDENTIFIER);
+            // Retrieve "a" from "WITH a"
+            identifier = cypher_ast_identifier_get_name(expr);
+        }
+
+        identifiers = array_append(identifiers, identifier);
+    }
+    return identifiers; 
+}
+
+void AST_BuildWithExpressions(AST *ast) {
+    // Handle with entities
+    const cypher_astnode_t *with_clause = AST_GetClause(ast, CYPHER_AST_WITH);
+    if (!with_clause) return;
+
+    // TODO is this a thing?
     // Query is of type "with *",
     // collect all defined identifiers and create with elements for them
-    if (cypher_ast_with_has_include_existing(with_clause)) return _ReturnExpandAll(ast);
+    // if (cypher_ast_with_has_include_existing(with_clause)) return _ReturnExpandAll(ast);
 
     unsigned int count = cypher_ast_with_nprojections(with_clause);
-    ast->return_expressions = array_new(AR_ExpNode*, count);
+    AR_ExpNode **with_expressions = array_new(AR_ExpNode*, count);
     for (unsigned int i = 0; i < count; i++) {
         const cypher_astnode_t *projection = cypher_ast_with_get_projection(with_clause, i);
         const cypher_astnode_t *expr = cypher_ast_projection_get_expression(projection);
@@ -428,31 +457,22 @@ char** AST_BuildWithExpressions(AST *ast) {
         char *alias = NULL;
         const cypher_astnode_t *alias_node = cypher_ast_projection_get_alias(projection);
         if (alias_node) {
+            // TODO ?
             // The projection either has an alias (AS) or is a function call.
             alias = (char*)cypher_ast_identifier_get_name(alias_node);
             // TODO can the alias have appeared in an earlier clause?
 
             // Associate alias with the expression
-
-            // TODO This seems like more work than should be necessary
-            // Make node for alias
-            AR_ExpNode *alias_exp = AR_EXP_FromExpression(ast, expr);
-
-            // Make space for alias entity in record
-            unsigned int id = AST_AddRecordEntry(ast);
-            AR_EXP_AssignRecordIndex(alias_exp, id);
-            // Add entity to the set of entities to be populated
-            ast->defined_entities = array_append(ast->defined_entities, alias_exp);
-            AST_MapAlias(ast, alias, alias_exp);
-            ast->return_expressions = array_append(ast->return_expressions, alias_exp);
+            AST_MapAlias(ast, alias, exp);
+            with_expressions = array_append(with_expressions, exp);
         } else {
-            ast->return_expressions = array_append(ast->return_expressions, exp);
+            with_expressions = array_append(with_expressions, exp);
         }
     }
 
     // Handle ORDER entities
     const cypher_astnode_t *order_clause = cypher_ast_with_get_order_by(with_clause);
-    if (!order_clause) return NULL; // TODO
+    if (!order_clause) return;
 
     count = cypher_ast_order_by_nitems(order_clause);
     ast->order_expressions = rm_malloc(count * sizeof(AR_ExpNode*));
@@ -464,5 +484,7 @@ char** AST_BuildWithExpressions(AST *ast) {
         const cypher_astnode_t *expr = cypher_ast_sort_item_get_expression(order_item);
         ast->order_expressions[i] = AR_EXP_FromExpression(ast, expr);
     }
+
+    return;
 }
 
